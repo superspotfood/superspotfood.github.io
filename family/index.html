@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全家即期品查詢</title>
+<style>
+  body {
+    font-family: "Microsoft JhengHei", sans-serif;
+    margin: 20px;
+    background-color: #f9fafb;
+    font-size: 16px;
+  }
+  h2 {
+    text-align: center;
+    margin-bottom: 5px;
+  }
+  #updateTime {
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+    margin-bottom: 15px;
+  }
+  select {
+    padding: 10px;
+    margin: 6px 8px 6px 0;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+    width: 100%;
+    max-width: 280px;
+  }
+  table {
+    margin-top: 10px;
+    border-collapse: collapse;
+    width: 100%;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  th, td {
+    border: 1px solid #e5e7eb;
+    padding: 10px;
+    text-align: left;
+  }
+  th {
+    background-color: #f3f4f6;
+  }
+  td.address {
+    color: #2563eb;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  td.address:hover {
+    color: #1e40af;
+  }
+  td.clickable {
+    color: #111827;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  tr.copied td.address {
+    background-color: #d1fae5;
+    transition: background-color 0.8s ease;
+  }
+  .copy-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #16a34a;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 999px;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.4s;
+    z-index: 1000;
+  }
+  .copy-toast.show {
+    opacity: 1;
+  }
+  .info-box {
+    margin-top: 15px;
+    background: #fff;
+    border-radius: 8px;
+    padding: 12px 16px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    line-height: 1.6;
+  }
+  .collapsible-row {
+    display: none;
+  }
+  .collapsible-content {
+    background: #f9fafb;
+    padding: 10px;
+    animation: fadeIn 0.3s ease;
+  }
+  .collapsible-content table {
+    width: 95%;
+    margin: 5px auto;
+    font-size: 15px;
+    background: #fff;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scaleY(0.95); }
+    to { opacity: 1; transform: scaleY(1); }
+  }
+</style>
+</head>
+<body>
+
+<h2>全家即期品查詢</h2>
+<div id="updateTime">資料更新時間：載入中...</div>
+
+<select id="citySelect">
+  <option value="">-- 選擇城市 --</option>
+</select>
+
+<select id="townSelect" disabled>
+  <option value="">-- 選擇區域 --</option>
+</select>
+
+<select id="cateSelect" disabled>
+  <option value="">-- 選擇類別 --</option>
+</select>
+
+<select id="itemSelect" disabled>
+  <option value="">-- 選擇商品 --</option>
+</select>
+
+<div id="infoBox" class="info-box" style="display:none;">
+  <strong>ߓ栩ឥ襯욼/strong><span id="showCate"></span><br>
+  <strong>ߍᠥ冥づͧ豯욼/strong><span id="showItem"></span>
+</div>
+
+<div style="overflow-x:auto;">
+<table id="resultTable" style="display:none;">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>店名</th>
+      <th>地址（點擊可複製）</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+</div>
+
+<div id="toast" class="copy-toast">ߓ력찥퀥粨䇨㽼/div>
+
+<script>
+const citySelect = document.getElementById('citySelect');
+const townSelect = document.getElementById('townSelect');
+const cateSelect = document.getElementById('cateSelect');
+const itemSelect = document.getElementById('itemSelect');
+const resultTable = document.getElementById('resultTable');
+const resultBody = resultTable.querySelector('tbody');
+const toast = document.getElementById('toast');
+const infoBox = document.getElementById('infoBox');
+const showCate = document.getElementById('showCate');
+const showItem = document.getElementById('showItem');
+const updateTimeDiv = document.getElementById('updateTime');
+
+let allData = [];
+
+function formatTimestamp(ts) {
+  const date = new Date(ts * 1000);
+  return date.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+}
+
+function showToast() {
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1200);
+}
+
+function copyToClipboard(text, row) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      row.classList.add('copied');
+      showToast();
+      setTimeout(() => row.classList.remove('copied'), 800);
+    });
+  }
+}
+
+async function loadData() {
+  const res = await fetch('/family/food.json?t='+new Date().getTime());
+  const json = await res.json();
+  const updateTime = json.updatetime;
+  allData = json.data || [];
+  updateTimeDiv.textContent = '資料更新時間：' + formatTimestamp(updateTime);
+
+  const cities = [...new Set(allData.map(d => d.city))];
+  cities.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    citySelect.appendChild(opt);
+  });
+}
+
+citySelect.addEventListener('change', () => {
+  const city = citySelect.value;
+  townSelect.innerHTML = '<option value="">-- 選擇區域 --</option>';
+  cateSelect.innerHTML = '<option value="">-- 選擇類別 --</option>';
+  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
+  townSelect.disabled = cateSelect.disabled = itemSelect.disabled = true;
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+  if (!city) return;
+  const towns = [...new Set(allData.filter(d => d.city === city).map(d => d.town))];
+  towns.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    townSelect.appendChild(opt);
+  });
+  townSelect.disabled = false;
+});
+
+townSelect.addEventListener('change', () => {
+  const city = citySelect.value;
+  const town = townSelect.value;
+  cateSelect.innerHTML = '<option value="">-- 選擇類別 --</option>';
+  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
+  cateSelect.disabled = itemSelect.disabled = true;
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+  if (!town) return;
+
+  const cates = [...new Set(allData
+    .filter(d => d.city === city && d.town === town)
+    .flatMap(d => d.data.map(i => i.cate))
+    .filter(Boolean))];
+  cates.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    cateSelect.appendChild(opt);
+  });
+  cateSelect.disabled = false;
+});
+
+cateSelect.addEventListener('change', () => {
+  const city = citySelect.value;
+  const town = townSelect.value;
+  const cate = cateSelect.value;
+  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
+  itemSelect.disabled = true;
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+  if (!cate) return;
+
+  const items = [...new Set(allData
+    .filter(d => d.city === city && d.town === town)
+    .flatMap(d => d.data.filter(i => i.cate === cate).map(i => i.name)))];
+  items.forEach(i => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = i;
+    itemSelect.appendChild(opt);
+  });
+  itemSelect.disabled = false;
+});
+
+itemSelect.addEventListener('change', () => {
+  const city = citySelect.value;
+  const town = townSelect.value;
+  const cate = cateSelect.value;
+  const item = itemSelect.value;
+  resultBody.innerHTML = '';
+  if (!item) {
+    resultTable.style.display = 'none';
+    infoBox.style.display = 'none';
+    return;
+  }
+
+  const stores = allData.filter(d => 
+    d.city === city && 
+    d.town === town && 
+    d.data.some(i => i.name === item && i.cate === cate)
+  );
+
+  if (stores.length === 0) {
+    resultTable.style.display = 'none';
+    infoBox.style.display = 'none';
+    alert('沒有符合條件的店家');
+    return;
+  }
+
+  showCate.textContent = cate;
+  showItem.textContent = item;
+  infoBox.style.display = '';
+  resultTable.style.display = '';
+
+  stores.forEach(store => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="clickable">${store.id}</td>
+      <td class="clickable">${store.name}</td>
+      <td class="address">${store.address}</td>
+    `;
+
+    const collapseRow = document.createElement('tr');
+    collapseRow.classList.add('collapsible-row');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.classList.add('collapsible-content');
+    td.innerHTML = createProductTable(store.data);
+    collapseRow.appendChild(td);
+
+    tr.querySelector('.address').addEventListener('click', () => copyToClipboard(store.address, tr));
+
+    // ✅ 手風琴邏輯：展開一個時關閉其他
+    tr.querySelectorAll('.clickable').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const allCollapses = resultBody.querySelectorAll('.collapsible-row');
+        allCollapses.forEach(r => {
+          if (r !== collapseRow) r.style.display = 'none';
+        });
+        collapseRow.style.display = (collapseRow.style.display === 'table-row') ? 'none' : 'table-row';
+      });
+    });
+
+    resultBody.appendChild(tr);
+    resultBody.appendChild(collapseRow);
+  });
+});
+
+function createProductTable(data) {
+  if (!data || data.length === 0) return '<em>無商品資料</em>';
+  let rows = data.map(i => 
+    `<tr><td>${i.cate}</td><td>${i.name}</td><td>${i.qty}</td></tr>`).join('');
+  return `
+    <table>
+      <thead><tr><th>類別</th><th>商品名稱</th><th>數量</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+loadData();
+</script>
+
+</body>
+</html>
