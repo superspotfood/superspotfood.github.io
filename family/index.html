@@ -11,16 +11,8 @@
     background-color: #f9fafb;
     font-size: 16px;
   }
-  h2 {
-    text-align: center;
-    margin-bottom: 5px;
-  }
-  #updateTime {
-    text-align: center;
-    color: #6b7280;
-    font-size: 14px;
-    margin-bottom: 15px;
-  }
+  h2 { text-align: center; margin-bottom: 5px; }
+  #updateTime { text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 15px; }
   select {
     padding: 10px;
     margin: 6px 8px 6px 0;
@@ -42,65 +34,29 @@
     padding: 10px;
     text-align: left;
   }
-  th {
-    background-color: #f3f4f6;
-  }
-  td.address {
-    color: #2563eb;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-  td.address:hover {
-    color: #1e40af;
-  }
-  td.clickable {
-    color: #111827;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  tr.copied td.address {
-    background-color: #d1fae5;
-    transition: background-color 0.8s ease;
-  }
+  th { background-color: #f3f4f6; }
+  td.address { color: #2563eb; cursor: pointer; text-decoration: underline; }
+  td.address:hover { color: #1e40af; }
+  td.clickable { color: #111827; cursor: pointer; font-weight: 600; }
+  tr.copied td.address { background-color: #d1fae5; transition: background-color 0.8s ease; }
   .copy-toast {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #16a34a;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 999px;
-    font-size: 14px;
-    opacity: 0;
-    transition: opacity 0.4s;
-    z-index: 1000;
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #16a34a; color: white; padding: 10px 20px; border-radius: 999px;
+    font-size: 14px; opacity: 0; transition: opacity 0.4s; z-index: 1000;
   }
-  .copy-toast.show {
-    opacity: 1;
-  }
+  .copy-toast.show { opacity: 1; }
   .info-box {
-    margin-top: 15px;
-    background: #fff;
-    border-radius: 8px;
-    padding: 12px 16px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    line-height: 1.6;
+    margin-top: 15px; background: #fff; border-radius: 8px; padding: 12px 16px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1); line-height: 1.6;
   }
-  .collapsible-row {
-    display: none;
-  }
+  .collapsible-row { display: none; }
   .collapsible-content {
-    background: #f9fafb;
-    padding: 10px;
-    animation: fadeIn 0.3s ease;
+    background: #f9fafb; padding: 10px; animation: fadeIn 0.3s ease;
   }
   .collapsible-content table {
-    width: 95%;
-    margin: 5px auto;
-    font-size: 15px;
-    background: #fff;
+    width: 95%; margin: 5px auto; font-size: 15px; background: #fff;
   }
+  .highlight { background-color: #fff6bf !important; }
   @keyframes fadeIn {
     from { opacity: 0; transform: scaleY(0.95); }
     to { opacity: 1; transform: scaleY(1); }
@@ -129,16 +85,17 @@
 </select>
 
 <div id="infoBox" class="info-box" style="display:none;">
-  <strong>類別：</strong><span id="showCate"></span><br>
-  <strong>商品名稱：</strong><span id="showItem"></span>
+  <strong>������ 類別：</strong><span id="showCate"></span><br>
+  <strong>������ 商品名稱：</strong><span id="showItem"></span>
 </div>
 
 <div style="overflow-x:auto;">
 <table id="resultTable" style="display:none;">
   <thead>
     <tr>
-      <th>ID</th>
+      <th>店ID</th>
       <th>店名</th>
+      <th>庫存</th>
       <th>地址（點擊可複製）</th>
     </tr>
   </thead>
@@ -146,7 +103,7 @@
 </table>
 </div>
 
-<div id="toast" class="copy-toast">複製成功</div>
+<div id="toast" class="copy-toast">������ 地址已複製</div>
 
 <script>
 const citySelect = document.getElementById('citySelect');
@@ -160,7 +117,6 @@ const infoBox = document.getElementById('infoBox');
 const showCate = document.getElementById('showCate');
 const showItem = document.getElementById('showItem');
 const updateTimeDiv = document.getElementById('updateTime');
-
 let allData = [];
 
 function formatTimestamp(ts) {
@@ -251,14 +207,28 @@ cateSelect.addEventListener('change', () => {
   infoBox.style.display = 'none';
   if (!cate) return;
 
-  const items = [...new Set(allData
+  // 用 scate 分組顯示
+  const itemsByScate = {};
+  allData
     .filter(d => d.city === city && d.town === town)
-    .flatMap(d => d.data.filter(i => i.cate === cate).map(i => i.name)))];
-  items.forEach(i => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = i;
-    itemSelect.appendChild(opt);
+    .forEach(d => {
+      d.data.filter(i => i.cate === cate).forEach(i => {
+        if (!itemsByScate[i.scate]) itemsByScate[i.scate] = new Set();
+        itemsByScate[i.scate].add(i.name);
+      });
+    });
+
+  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
+  Object.keys(itemsByScate).forEach(scate => {
+    const group = document.createElement('optgroup');
+    group.label = scate || "其他";
+    itemsByScate[scate].forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      group.appendChild(opt);
+    });
+    itemSelect.appendChild(group);
   });
   itemSelect.disabled = false;
 });
@@ -275,9 +245,8 @@ itemSelect.addEventListener('change', () => {
     return;
   }
 
-  const stores = allData.filter(d => 
-    d.city === city && 
-    d.town === town && 
+  const stores = allData.filter(d =>
+    d.city === city && d.town === town &&
     d.data.some(i => i.name === item && i.cate === cate)
   );
 
@@ -294,30 +263,29 @@ itemSelect.addEventListener('change', () => {
   resultTable.style.display = '';
 
   stores.forEach(store => {
+    const matched = store.data.find(i => i.name === item && i.cate === cate);
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="clickable">${store.id}</td>
       <td class="clickable">${store.name}</td>
+      <td>${matched ? matched.qty : ''}</td>
       <td class="address">${store.address}</td>
     `;
 
     const collapseRow = document.createElement('tr');
     collapseRow.classList.add('collapsible-row');
     const td = document.createElement('td');
-    td.colSpan = 3;
+    td.colSpan = 4;
     td.classList.add('collapsible-content');
-    td.innerHTML = createProductTable(store.data);
+    td.innerHTML = createProductTable(store.data, item);
     collapseRow.appendChild(td);
 
     tr.querySelector('.address').addEventListener('click', () => copyToClipboard(store.address, tr));
 
-    // ✅ 手風琴邏輯：展開一個時關閉其他
     tr.querySelectorAll('.clickable').forEach(cell => {
       cell.addEventListener('click', () => {
         const allCollapses = resultBody.querySelectorAll('.collapsible-row');
-        allCollapses.forEach(r => {
-          if (r !== collapseRow) r.style.display = 'none';
-        });
+        allCollapses.forEach(r => { if (r !== collapseRow) r.style.display = 'none'; });
         collapseRow.style.display = (collapseRow.style.display === 'table-row') ? 'none' : 'table-row';
       });
     });
@@ -327,10 +295,13 @@ itemSelect.addEventListener('change', () => {
   });
 });
 
-function createProductTable(data) {
+function createProductTable(data, selectedItem) {
   if (!data || data.length === 0) return '<em>無商品資料</em>';
-  let rows = data.map(i => 
-    `<tr><td>${i.cate}</td><td>${i.name}</td><td>${i.qty}</td></tr>`).join('');
+  let rows = data.map(i =>
+    `<tr class="${i.name === selectedItem ? 'highlight' : ''}">
+      <td>${i.cate}</td><td>${i.name}</td><td>${i.qty}</td>
+    </tr>`
+  ).join('');
   return `
     <table>
       <thead><tr><th>類別</th><th>商品名稱</th><th>數量</th></tr></thead>
@@ -340,6 +311,5 @@ function createProductTable(data) {
 
 loadData();
 </script>
-
 </body>
 </html>
