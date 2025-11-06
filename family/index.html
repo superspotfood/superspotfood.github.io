@@ -22,6 +22,29 @@
     width: 100%;
     max-width: 280px;
   }
+  .radio-group {
+    margin: 10px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .radio-btn {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: white;
+    cursor: pointer;
+    user-select: none;
+    transition: 0.2s;
+  }
+  .radio-btn:hover {
+    background-color: #f3f4f6;
+  }
+  .radio-btn.active {
+    background-color: #2563eb;
+    color: white;
+    border-color: #1d4ed8;
+  }
   table {
     margin-top: 10px;
     border-collapse: collapse;
@@ -76,24 +99,20 @@
   <option value="">-- 選擇區域 --</option>
 </select>
 
-<select id="cateSelect" disabled>
-  <option value="">-- 選擇類別 --</option>
-</select>
-
-<select id="itemSelect" disabled>
-  <option value="">-- 選擇商品 --</option>
-</select>
+<div id="cateContainer"></div>
+<div id="scateContainer"></div>
+<div id="nameContainer"></div>
 
 <div id="infoBox" class="info-box" style="display:none;">
-  <strong>������ 類別：</strong><span id="showCate"></span><br>
-  <strong>������ 商品名稱：</strong><span id="showItem"></span>
+  <strong>類別：</strong><span id="showCate"></span><br>
+  <strong>商品名稱：</strong><span id="showItem"></span>
 </div>
 
 <div style="overflow-x:auto;">
 <table id="resultTable" style="display:none;">
   <thead>
     <tr>
-      <th>店ID</th>
+      <th>ID</th>
       <th>店名</th>
       <th>庫存</th>
       <th>地址（點擊可複製）</th>
@@ -103,13 +122,14 @@
 </table>
 </div>
 
-<div id="toast" class="copy-toast">������ 地址已複製</div>
+<div id="toast" class="copy-toast">地址已複製</div>
 
 <script>
 const citySelect = document.getElementById('citySelect');
 const townSelect = document.getElementById('townSelect');
-const cateSelect = document.getElementById('cateSelect');
-const itemSelect = document.getElementById('itemSelect');
+const cateContainer = document.getElementById('cateContainer');
+const scateContainer = document.getElementById('scateContainer');
+const nameContainer = document.getElementById('nameContainer');
 const resultTable = document.getElementById('resultTable');
 const resultBody = resultTable.querySelector('tbody');
 const toast = document.getElementById('toast');
@@ -118,6 +138,9 @@ const showCate = document.getElementById('showCate');
 const showItem = document.getElementById('showItem');
 const updateTimeDiv = document.getElementById('updateTime');
 let allData = [];
+let selectedCate = null;
+let selectedScate = null;
+let selectedName = null;
 
 function formatTimestamp(ts) {
   const date = new Date(ts * 1000);
@@ -130,13 +153,11 @@ function showToast() {
 }
 
 function copyToClipboard(text, row) {
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => {
-      row.classList.add('copied');
-      showToast();
-      setTimeout(() => row.classList.remove('copied'), 800);
-    });
-  }
+  navigator.clipboard.writeText(text).then(() => {
+    row.classList.add('copied');
+    showToast();
+    setTimeout(() => row.classList.remove('copied'), 800);
+  });
 }
 
 async function loadData() {
@@ -145,7 +166,6 @@ async function loadData() {
   const updateTime = json.updatetime;
   allData = json.data || [];
   updateTimeDiv.textContent = '資料更新時間：' + formatTimestamp(updateTime);
-
   const cities = [...new Set(allData.map(d => d.city))];
   cities.forEach(c => {
     const opt = document.createElement('option');
@@ -158,9 +178,8 @@ async function loadData() {
 citySelect.addEventListener('change', () => {
   const city = citySelect.value;
   townSelect.innerHTML = '<option value="">-- 選擇區域 --</option>';
-  cateSelect.innerHTML = '<option value="">-- 選擇類別 --</option>';
-  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
-  townSelect.disabled = cateSelect.disabled = itemSelect.disabled = true;
+  townSelect.disabled = true;
+  cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
   infoBox.style.display = 'none';
   if (!city) return;
@@ -177,9 +196,7 @@ citySelect.addEventListener('change', () => {
 townSelect.addEventListener('change', () => {
   const city = citySelect.value;
   const town = townSelect.value;
-  cateSelect.innerHTML = '<option value="">-- 選擇類別 --</option>';
-  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
-  cateSelect.disabled = itemSelect.disabled = true;
+  cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
   infoBox.style.display = 'none';
   if (!town) return;
@@ -188,63 +205,70 @@ townSelect.addEventListener('change', () => {
     .filter(d => d.city === city && d.town === town)
     .flatMap(d => d.data.map(i => i.cate))
     .filter(Boolean))];
-  cates.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c;
-    opt.textContent = c;
-    cateSelect.appendChild(opt);
+
+  cateContainer.innerHTML = '<h4>選擇類別：</h4><div class="radio-group">' +
+    cates.map(c => `<div class="radio-btn" data-value="${c}">${c}</div>`).join('') + '</div>';
+
+  cateContainer.querySelectorAll('.radio-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      cateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedCate = btn.dataset.value;
+      selectedScate = selectedName = null;
+      showScateOptions(city, town, selectedCate);
+    });
   });
-  cateSelect.disabled = false;
 });
 
-cateSelect.addEventListener('change', () => {
-  const city = citySelect.value;
-  const town = townSelect.value;
-  const cate = cateSelect.value;
-  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
-  itemSelect.disabled = true;
+function showScateOptions(city, town, cate) {
+  scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
   infoBox.style.display = 'none';
-  if (!cate) return;
 
-  // 用 scate 分組顯示
-  const itemsByScate = {};
-  allData
+  const scates = [...new Set(allData
     .filter(d => d.city === city && d.town === town)
-    .forEach(d => {
-      d.data.filter(i => i.cate === cate).forEach(i => {
-        if (!itemsByScate[i.scate]) itemsByScate[i.scate] = new Set();
-        itemsByScate[i.scate].add(i.name);
-      });
-    });
+    .flatMap(d => d.data.filter(i => i.cate === cate).map(i => i.scate))
+    .filter(Boolean))];
 
-  itemSelect.innerHTML = '<option value="">-- 選擇商品 --</option>';
-  Object.keys(itemsByScate).forEach(scate => {
-    const group = document.createElement('optgroup');
-    group.label = scate || "其他";
-    itemsByScate[scate].forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      group.appendChild(opt);
+  scateContainer.innerHTML = '<h4>選擇次分類：</h4><div class="radio-group">' +
+    scates.map(s => `<div class="radio-btn" data-value="${s}">${s}</div>`).join('') + '</div>';
+
+  scateContainer.querySelectorAll('.radio-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      scateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedScate = btn.dataset.value;
+      selectedName = null;
+      showNameOptions(city, town, cate, selectedScate);
     });
-    itemSelect.appendChild(group);
   });
-  itemSelect.disabled = false;
-});
+}
 
-itemSelect.addEventListener('change', () => {
-  const city = citySelect.value;
-  const town = townSelect.value;
-  const cate = cateSelect.value;
-  const item = itemSelect.value;
+function showNameOptions(city, town, cate, scate) {
+  nameContainer.innerHTML = '';
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+
+  const names = [...new Set(allData
+    .filter(d => d.city === city && d.town === town)
+    .flatMap(d => d.data.filter(i => i.cate === cate && i.scate === scate).map(i => i.name))
+    .filter(Boolean))];
+
+  nameContainer.innerHTML = '<h4>選擇商品：</h4><div class="radio-group">' +
+    names.map(n => `<div class="radio-btn" data-value="${n}">${n}</div>`).join('') + '</div>';
+
+  nameContainer.querySelectorAll('.radio-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      nameContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedName = btn.dataset.value;
+      showResults(city, town, cate, selectedName);
+    });
+  });
+}
+
+function showResults(city, town, cate, item) {
   resultBody.innerHTML = '';
-  if (!item) {
-    resultTable.style.display = 'none';
-    infoBox.style.display = 'none';
-    return;
-  }
-
   const stores = allData.filter(d =>
     d.city === city && d.town === town &&
     d.data.some(i => i.name === item && i.cate === cate)
@@ -253,7 +277,6 @@ itemSelect.addEventListener('change', () => {
   if (stores.length === 0) {
     resultTable.style.display = 'none';
     infoBox.style.display = 'none';
-    alert('沒有符合條件的店家');
     return;
   }
 
@@ -293,18 +316,18 @@ itemSelect.addEventListener('change', () => {
     resultBody.appendChild(tr);
     resultBody.appendChild(collapseRow);
   });
-});
+}
 
 function createProductTable(data, selectedItem) {
   if (!data || data.length === 0) return '<em>無商品資料</em>';
   let rows = data.map(i =>
     `<tr class="${i.name === selectedItem ? 'highlight' : ''}">
-      <td>${i.cate}</td><td>${i.name}</td><td>${i.qty}</td>
+      <td>${i.cate}</td><td>${i.scate}</td><td>${i.name}</td><td>${i.qty}</td>
     </tr>`
   ).join('');
   return `
     <table>
-      <thead><tr><th>類別</th><th>商品名稱</th><th>數量</th></tr></thead>
+      <thead><tr><th>類別</th><th>次分類</th><th>商品名稱</th><th>數量</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
