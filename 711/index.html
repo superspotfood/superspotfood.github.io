@@ -254,6 +254,9 @@ function showNameOptions(city, town, cate, scate) {
     .flatMap(d => d.data.filter(i => i.cate === cate && i.scate === scate).map(i => i.name))
     .filter(Boolean))];
 
+  // ✅ 將商品名稱依照中文字首排序
+  names.sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
   nameContainer.innerHTML = '<h4>選擇商品：</h4><div class="radio-group">' +
     names.map(n => `<div class="radio-btn" data-value="${n}">${n}</div>`).join('') + '</div>';
 
@@ -266,6 +269,7 @@ function showNameOptions(city, town, cate, scate) {
     });
   });
 }
+
 
 function showResults(city, town, cate, item) {
   resultBody.innerHTML = '';
