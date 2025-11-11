@@ -12,7 +12,20 @@
     font-size: 16px;
   }
   h2 { text-align: center; margin-bottom: 5px; }
-  #updateTime { text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 15px; }
+  #updateTime {
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+    margin: 10px 0;
+    display: none; /* ������ 初始隱藏 */
+  }
+  #noDataMessage {
+    text-align: center;
+    color: #ef4444;
+    font-size: 16px;
+    margin-top: 20px;
+    display: none;
+  }
   select {
     padding: 10px;
     margin: 6px 8px 6px 0;
@@ -37,9 +50,7 @@
     user-select: none;
     transition: 0.2s;
   }
-  .radio-btn:hover {
-    background-color: #f3f4f6;
-  }
+  .radio-btn:hover { background-color: #f3f4f6; }
   .radio-btn.active {
     background-color: #2563eb;
     color: white;
@@ -73,9 +84,7 @@
     box-shadow: 0 2px 6px rgba(0,0,0,0.1); line-height: 1.6;
   }
   .collapsible-row { display: none; }
-  .collapsible-content {
-    background: #f9fafb; padding: 10px; animation: fadeIn 0.3s ease;
-  }
+  .collapsible-content { background: #f9fafb; padding: 10px; animation: fadeIn 0.3s ease; }
   .collapsible-content table {
     width: 95%; margin: 5px auto; font-size: 15px; background: #fff;
   }
@@ -89,7 +98,6 @@
 <body>
 
 <h2>全家即期品查詢</h2>
-<div id="updateTime">資料更新時間：載入中...</div>
 
 <select id="citySelect">
   <option value="">-- 選擇城市 --</option>
@@ -99,20 +107,23 @@
   <option value="">-- 選擇區域 --</option>
 </select>
 
+<div id="updateTime">資料更新時間：載入中...</div> <!-- ������ 移到區域下方 -->
+<div id="noDataMessage">目前此區域無庫存</div> <!-- ✅ 新增提示訊息 -->
+
 <div id="cateContainer"></div>
 <div id="scateContainer"></div>
 <div id="nameContainer"></div>
 
 <div id="infoBox" class="info-box" style="display:none;">
-  <strong>類別：</strong><span id="showCate"></span><br>
-  <strong>商品名稱：</strong><span id="showItem"></span>
+  <strong>������ 類別：</strong><span id="showCate"></span><br>
+  <strong>������ 商品名稱：</strong><span id="showItem"></span>
 </div>
 
 <div style="overflow-x:auto;">
 <table id="resultTable" style="display:none;">
   <thead>
     <tr>
-      <th>ID</th>
+      <th>店ID</th>
       <th>店名</th>
       <th>庫存</th>
       <th>地址（點擊可複製）</th>
@@ -122,11 +133,13 @@
 </table>
 </div>
 
-<div id="toast" class="copy-toast">地址已複製</div>
+<div id="toast" class="copy-toast">������ 地址已複製</div>
 
 <script>
 const citySelect = document.getElementById('citySelect');
 const townSelect = document.getElementById('townSelect');
+const updateTimeDiv = document.getElementById('updateTime');
+const noDataMessage = document.getElementById('noDataMessage');
 const cateContainer = document.getElementById('cateContainer');
 const scateContainer = document.getElementById('scateContainer');
 const nameContainer = document.getElementById('nameContainer');
@@ -136,22 +149,19 @@ const toast = document.getElementById('toast');
 const infoBox = document.getElementById('infoBox');
 const showCate = document.getElementById('showCate');
 const showItem = document.getElementById('showItem');
-const updateTimeDiv = document.getElementById('updateTime');
+
+let allZipData = [];
 let allData = [];
-let selectedCate = null;
-let selectedScate = null;
-let selectedName = null;
+let selectedCate = null, selectedScate = null, selectedName = null;
 
 function formatTimestamp(ts) {
   const date = new Date(ts * 1000);
   return date.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 }
-
 function showToast() {
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 1200);
 }
-
 function copyToClipboard(text, row) {
   navigator.clipboard.writeText(text).then(() => {
     row.classList.add('copied');
@@ -160,13 +170,11 @@ function copyToClipboard(text, row) {
   });
 }
 
-async function loadData() {
-  const res = await fetch('/family/data/all.json?t='+new Date().getTime());
-  const json = await res.json();
-  const updateTime = json.updatetime;
-  allData = json.data || [];
-  updateTimeDiv.textContent = '資料更新時間：' + formatTimestamp(updateTime);
-  const cities = [...new Set(allData.map(d => d.city))];
+// 載入 zipcode.json
+async function loadZipData() {
+  const res = await fetch('/family/zipcode.json');
+  allZipData = await res.json();
+  const cities = [...new Set(allZipData.map(z => z.city))];
   cities.forEach(c => {
     const opt = document.createElement('option');
     opt.value = c;
@@ -181,54 +189,77 @@ citySelect.addEventListener('change', () => {
   townSelect.disabled = true;
   cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
+  updateTimeDiv.style.display = 'none';
+  noDataMessage.style.display = 'none';
   infoBox.style.display = 'none';
   if (!city) return;
-  const towns = [...new Set(allData.filter(d => d.city === city).map(d => d.town))];
+
+  const towns = allZipData.filter(z => z.city === city);
   towns.forEach(t => {
     const opt = document.createElement('option');
-    opt.value = t;
-    opt.textContent = t;
+    opt.value = t.town;
+    opt.textContent = t.town;
     townSelect.appendChild(opt);
   });
   townSelect.disabled = false;
 });
 
-townSelect.addEventListener('change', () => {
+// town選擇後讀取對應區域檔案
+townSelect.addEventListener('change', async () => {
   const city = citySelect.value;
   const town = townSelect.value;
+  const zipInfo = allZipData.find(z => z.city === city && z.town === town);
   cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
+  updateTimeDiv.style.display = 'none';
+  noDataMessage.style.display = 'none';
   infoBox.style.display = 'none';
-  if (!town) return;
+  if (!zipInfo) return;
 
-  const cates = [...new Set(allData
-    .filter(d => d.city === city && d.town === town)
-    .flatMap(d => d.data.map(i => i.cate))
-    .filter(Boolean))];
+  try {
+    const zipcode = zipInfo.zipcode;
+    const res = await fetch(`/family/data/${zipcode}.json`);
+    const json = await res.json();
 
-  cateContainer.innerHTML = '<h4>選擇類別：</h4><div class="radio-group">' +
-    cates.map(c => `<div class="radio-btn" data-value="${c}">${c}</div>`).join('') + '</div>';
+    allData = json.data || [];
+    updateTimeDiv.textContent = '資料更新時間：' + formatTimestamp(json.updatetime);
+    updateTimeDiv.style.display = 'block'; // ✅ 選完區域後顯示更新時間
 
-  cateContainer.querySelectorAll('.radio-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      cateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedCate = btn.dataset.value;
-      selectedScate = selectedName = null;
-      showScateOptions(city, town, selectedCate);
+    // ✅ 無資料情況處理
+    if (!allData || allData.length === 0 || allData.every(s => !s.data || s.data.length === 0)) {
+      noDataMessage.style.display = 'block';
+      return;
+    }
+
+    const cates = [...new Set(allData.flatMap(d => d.data.map(i => i.cate)).filter(Boolean))];
+    cateContainer.innerHTML = '<h4>選擇類別：</h4><div class="radio-group">' +
+      cates.map(c => `<div class="radio-btn" data-value="${c}">${c}</div>`).join('') + '</div>';
+
+    cateContainer.querySelectorAll('.radio-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        cateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedCate = btn.dataset.value;
+        selectedScate = selectedName = null;
+        showScateOptions(selectedCate);
+      });
     });
-  });
+  } catch (err) {
+    console.error('讀取區域資料失敗：', err);
+    noDataMessage.textContent = '⚠️ 無法載入此區域資料';
+    noDataMessage.style.display = 'block';
+  }
 });
 
-function showScateOptions(city, town, cate) {
+function showScateOptions(cate) {
   scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
   infoBox.style.display = 'none';
+  noDataMessage.style.display = 'none';
 
-  const scates = [...new Set(allData
-    .filter(d => d.city === city && d.town === town)
-    .flatMap(d => d.data.filter(i => i.cate === cate).map(i => i.scate))
-    .filter(Boolean))];
+  const scates = [...new Set(allData.flatMap(d =>
+    d.data.filter(i => i.cate === cate).map(i => i.scate)
+  ).filter(Boolean))];
 
   scateContainer.innerHTML = '<h4>選擇次分類：</h4><div class="radio-group">' +
     scates.map(s => `<div class="radio-btn" data-value="${s}">${s}</div>`).join('') + '</div>';
@@ -239,22 +270,20 @@ function showScateOptions(city, town, cate) {
       btn.classList.add('active');
       selectedScate = btn.dataset.value;
       selectedName = null;
-      showNameOptions(city, town, cate, selectedScate);
+      showNameOptions(selectedCate, selectedScate);
     });
   });
 }
 
-function showNameOptions(city, town, cate, scate) {
+function showNameOptions(cate, scate) {
   nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
   infoBox.style.display = 'none';
 
   const names = [...new Set(allData
-    .filter(d => d.city === city && d.town === town)
     .flatMap(d => d.data.filter(i => i.cate === cate && i.scate === scate).map(i => i.name))
     .filter(Boolean))];
 
-  // ✅ 將商品名稱依照中文字首排序
   names.sort((a, b) => a.localeCompare(b, 'zh-Hant'));
 
   nameContainer.innerHTML = '<h4>選擇商品：</h4><div class="radio-group">' +
@@ -265,16 +294,14 @@ function showNameOptions(city, town, cate, scate) {
       nameContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedName = btn.dataset.value;
-      showResults(city, town, cate, selectedName);
+      showResults(selectedCate, selectedName);
     });
   });
 }
 
-
-function showResults(city, town, cate, item) {
+function showResults(cate, item) {
   resultBody.innerHTML = '';
   const stores = allData.filter(d =>
-    d.city === city && d.town === town &&
     d.data.some(i => i.name === item && i.cate === cate)
   );
 
@@ -308,7 +335,6 @@ function showResults(city, town, cate, item) {
     collapseRow.appendChild(td);
 
     tr.querySelector('.address').addEventListener('click', () => copyToClipboard(store.address, tr));
-
     tr.querySelectorAll('.clickable').forEach(cell => {
       cell.addEventListener('click', () => {
         const allCollapses = resultBody.querySelectorAll('.collapsible-row');
@@ -336,7 +362,7 @@ function createProductTable(data, selectedItem) {
     </table>`;
 }
 
-loadData();
+loadZipData();
 </script>
 </body>
 </html>
