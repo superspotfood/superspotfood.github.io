@@ -140,7 +140,7 @@ function copyToClipboard(text, row) {
 }
 
 async function loadData() {
-  const res = await fetch('/family/food.json?t='+new Date().getTime());
+  const res = await fetch('/family/data/all.json?t='+new Date().getTime());
   const json = await res.json();
   const updateTime = json.updatetime;
   allData = json.data || [];
