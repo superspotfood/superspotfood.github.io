@@ -368,17 +368,22 @@ function showNameOptions(cate, scate) {
 
     const list = document.createElement('div');
     list.className = 'group-list';
-    list.style.display = 'none';
+
     list.innerHTML = grouped[group].map(n => `<div class="radio-btn" data-value="${escapeHtml(n)}">${escapeHtml(n)}</div>`).join('');
 
-    header.addEventListener('click', () => {
-      // 收合其他 group-list，手風琴方式
-      const allLists = container.querySelectorAll('.group-list');
-      allLists.forEach(l => { if (l !== list) l.style.display = 'none'; });
-      list.style.display = list.style.display === 'block' ? 'none' : 'block';
-    });
+    if(Object.keys(grouped).length>1){ 
+      header.addEventListener('click', () => {
+        // 收合其他 group-list，手風琴方式
+        const allLists = container.querySelectorAll('.group-list');
+        allLists.forEach(l => { if (l !== list) l.style.display = 'none'; });
+        list.style.display = list.style.display === 'block' ? 'none' : 'block';
+      });
+      list.style.display = 'none';
+      container.appendChild(header);
+    }else{
+      list.style.display = 'block';
+    }
 
-    container.appendChild(header);
     container.appendChild(list);
   });
 
