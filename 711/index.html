@@ -239,7 +239,7 @@ townSelect.addEventListener('change', async () => {
     const json = await res.json();
 
     allData = json.data || [];
-    updateTimeDiv.textContent = '資料更新時間：' + formatTimestamp(json.updatetime);
+    updateTimeDiv.textContent = '資料更新時間(約每10分鐘更新一次)：' + formatTimestamp(json.updatetime);
     updateTimeDiv.style.display = 'block';
 
     // 無資料情況處理
