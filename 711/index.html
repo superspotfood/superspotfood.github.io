@@ -110,12 +110,29 @@
     from { opacity: 0; transform: scaleY(0.95); }
     to { opacity: 1; transform: scaleY(1); }
   }
+    .mode-btn {
+    padding: 8px 14px;
+    margin: 3px;
+    border-radius: 6px;
+    border: 1px solid #888;
+    background: #f3f4f6;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .mode-btn.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+  }
 </style>
 </head>
 <body>
 
 <h2>711即期品查詢</h2>
-
+<div id="modeToggle" style="margin-bottom: 15px; text-align: center;">
+  <button id="modeA" class="mode-btn active">區域模式</button>
+  <button id="modeB" class="mode-btn">商品搜尋模式</button>
+</div>
 <select id="citySelect">
   <option value="">-- 選擇城市 --</option>
 </select>
@@ -167,11 +184,102 @@ const infoBox = document.getElementById('infoBox');
 const showCate = document.getElementById('showCate');
 const showItem = document.getElementById('showItem');
 
-let allZipData = [];    // zipcode.json
-let cityData = null;    // 讀取後的 {ccode}.json
-let allData = [];       // town 內所有店家資料（會依 town 選擇切換）
-let ccodeMap = {};      // city → ccode 快取
+let allZipData = [];
+let allData = [];
 let selectedCate = null, selectedScate = null, selectedName = null;
+let lastSelectedTown = "";
+let cityData = null;    // 讀取後的 {ccode}.json
+let ccodeMap = {};      // city → ccode 快取
+
+// 模式 A = 區域模式（列出整區店家）
+// 模式 B = 商品搜尋模式（你現在的原本流程）
+let currentMode = 'A';
+
+// UI 切換
+document.getElementById('modeA').addEventListener('click', () => {
+  currentMode = 'A';
+  document.getElementById('modeA').classList.add('active');
+  document.getElementById('modeB').classList.remove('active');
+  resetAll();
+  refreshTowns();
+});
+
+document.getElementById('modeB').addEventListener('click', () => {
+  currentMode = 'B';
+  document.getElementById('modeB').classList.add('active');
+  document.getElementById('modeA').classList.remove('active');
+  resetAll();
+  refreshTowns();
+});
+
+// 清除畫面所有內容（切換模式或城市時用）
+function resetAll() {
+  townSelect.innerHTML = '<option value="">-- 選擇區域 --</option>';
+  cateContainer.innerHTML = '';
+  scateContainer.innerHTML = '';
+  nameContainer.innerHTML = '';
+  resultBody.innerHTML = '';
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+  noDataMessage.style.display = 'none';
+}
+
+function resetAfterTown() {
+  // 清空後續所有選項
+  cateContainer.innerHTML = '';
+  scateContainer.innerHTML = '';
+  nameContainer.innerHTML = '';
+
+  // 清空表格內容
+  resultBody.innerHTML = '';
+  resultTable.style.display = 'none';
+
+  // 清空其他提示
+  infoBox.style.display = 'none';
+  noDataMessage.style.display = 'none';
+}
+
+// 重新填充 townSelect（優先使用 cityData.town，否則 fallback zipcode.json）
+function refreshTowns() {
+  const city = citySelect.value;
+  townSelect.innerHTML = '<option value="">-- 選擇區域 --</option>';
+  townSelect.disabled = true;
+
+  if (!city) return;
+  // 如果目前有載入的 cityData (例如已經 fetch 過 ccode.json)，優先用它
+  if (cityData && cityData.town && Array.isArray(cityData.town)) {
+    cityData.town.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.town;
+      opt.textContent = t.town;
+      townSelect.appendChild(opt);
+    });
+    townSelect.disabled = false;
+    if (lastSelectedTown) {
+      const option = [...townSelect.options].find(o => o.value === lastSelectedTown);
+      if (option) {
+        townSelect.value = lastSelectedTown;
+      // 如果你希望自動觸發該 town 的事件（重新顯示內容），加這行
+        townSelect.dispatchEvent(new Event('change'));
+      }
+    }
+    return;
+  }
+
+  // fallback：使用 zipcode.json 的內容來建 town
+  const townsFromZip = allZipData.filter(z => z.city === city).map(z => z.town);
+  const uniqueTowns = [...new Set(townsFromZip)];
+  uniqueTowns.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    townSelect.appendChild(opt);
+  });
+  townSelect.disabled = uniqueTowns.length === 0;
+}
+
+
+
 
 function formatTimestamp(ts) {
   const date = new Date(ts * 1000);
@@ -188,6 +296,7 @@ function copyToClipboard(text, row) {
     setTimeout(() => row.classList.remove('copied'), 800);
   });
 }
+
 
 
 /* =====================
@@ -225,11 +334,20 @@ citySelect.addEventListener('change', async () => {
   infoBox.style.display = 'none';
   noDataMessage.style.display = 'none';
   updateTimeDiv.style.display = 'none';
-
-  if (!city) return;
-
+  resetAfterTown();
+  if (!city) {
+    // 清空 cityData 保障行為一致
+    
+    cityData = null;
+    refreshTowns();
+    return;
+  }
   const ccode = ccodeMap[city];
-  if (!ccode) return;
+  if (!ccode) {
+    cityData = null;
+    refreshTowns();
+    return;
+  }
 
   try {
     const res = await fetch(`/711/data/${ccode}.json`);
@@ -254,6 +372,7 @@ citySelect.addEventListener('change', async () => {
     noDataMessage.textContent = '無法載入城市資料';
     noDataMessage.style.display = 'block';
   }
+  refreshTowns();
 });
 
 /* =====================
@@ -261,47 +380,118 @@ citySelect.addEventListener('change', async () => {
    ===================== */
 townSelect.addEventListener('change', () => {
   const town = townSelect.value;
-
-  cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
-  resultTable.style.display = 'none';
-  infoBox.style.display = 'none';
-  noDataMessage.style.display = 'none';
+  lastSelectedTown = townSelect.value;  // 記憶最後選的 town
+//  resetAll();
+  resetAfterTown();
 
   if (!town) return;
 
   const townInfo = cityData.town.find(t => t.town === town);
   if (!townInfo) return;
 
-  // 這就是該區域全部店舖資料
   allData = townInfo.data || [];
 
-  if (allData.length === 0 || allData.every(s => !s.data || s.data.length === 0)) {
+  // === 分模式 ===
+
+  if (currentMode === 'A') {
+    // ---- 區域模式：直接列出所有店 ----
+    showTownStores(allData);
+    return;
+  }
+
+  // ---- 商品搜尋模式（原本模式）----
+  buildCateOptions(allData);
+});
+
+
+function showTownStores(storeList) {
+  if (!storeList || storeList.length === 0) {
+    noDataMessage.textContent = '此區無資料';
     noDataMessage.style.display = 'block';
     return;
   }
 
-  /* ========== 建立類別選單 ========== */
-  const cates = [...new Set(allData
-    .flatMap(d => d.data.map(i => i.cate))
-    .filter(Boolean)
-  )];
+  resultBody.innerHTML = '';
+  resultTable.style.display = 'table'; // 顯示 table
 
+  storeList.forEach(store => {
+    // 注意：此 table header 有 4 欄 (id, name, qty, address)
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="clickable">${store.id}</td>
+      <td class="clickable">${store.name}</td>
+      <td>${/* 區域模式下沒有特定商品庫存，顯示總商品數或空白 */ (store.data ? store.data.length : '')}</td>
+      <td class="address">${store.address}</td>
+    `;
+
+    // collapse row 必須 colspan = 4 (對應 header 四欄)
+    const collapseRow = document.createElement('tr');
+    collapseRow.classList.add('collapsible-row');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.classList.add('collapsible-content');
+    td.innerHTML = createProductTable(store.data); // 顯示該店所有商品
+    collapseRow.appendChild(td);
+
+    // 點地址複製
+    const addrCell = tr.querySelector('.address');
+    if (addrCell) addrCell.addEventListener('click', () => copyToClipboard(store.address, tr));
+
+    // 手風琴：一次只開一個
+    tr.querySelectorAll('.clickable').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const allCollapses = resultBody.querySelectorAll('.collapsible-row');
+        allCollapses.forEach(r => { if (r !== collapseRow) r.style.display = 'none'; });
+        collapseRow.style.display = (collapseRow.style.display === 'table-row') ? 'none' : 'table-row';
+      });
+    });
+
+    resultBody.appendChild(tr);
+    resultBody.appendChild(collapseRow);
+  });
+}
+
+
+
+// 建立類別 (cate) 選項的函式（把原本的內嵌程式抽成此函式）
+function buildCateOptions(storeList) {
+  cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+  noDataMessage.style.display = 'none';
+
+  if (!storeList || storeList.length === 0) {
+    noDataMessage.textContent = '此區無資料';
+    noDataMessage.style.display = 'block';
+    return;
+  }
+
+  // 1. 擷取所有 cate
+  const cates = [...new Set(storeList.flatMap(d => d.data.map(i => i.cate)).filter(Boolean))];
+
+  if (cates.length === 0) {
+    noDataMessage.textContent = '此區目前無分類資料';
+    noDataMessage.style.display = 'block';
+    return;
+  }
+
+  // 2. 建 UI（同你之前的風格）
   cateContainer.innerHTML =
     '<h4>選擇類別：</h4><div class="radio-group">' +
-    cates.map(c => `<div class="radio-btn" data-value="${c}">${c}</div>`).join('') +
+    cates.map(c => `<div class="radio-btn" data-value="${escapeHtml(c)}">${escapeHtml(c)}</div>`).join('') +
     '</div>';
 
+  // 3. 綁定事件：點類別後顯示次分類
   cateContainer.querySelectorAll('.radio-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       cateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      selectedCate = btn.dataset.value;
+      selectedCate = unescapeHtml(btn.dataset.value);
       selectedScate = selectedName = null;
-      showScateOptions(selectedCate);
+      showScateOptions(selectedCate); // 你既有的函式 (不需改)
     });
   });
-});
-
+}
 
 
 function showScateOptions(cate) {
