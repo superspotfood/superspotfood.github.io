@@ -125,6 +125,14 @@
     border-color: #2563eb;
   }
 </style>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-VXLJ3ZT4FR"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-VXLJ3ZT4FR');
+</script>
 </head>
 <body>
 
@@ -662,6 +670,15 @@ function showResults(cate, item) {
 
   showCate.textContent = cate;
   showItem.textContent = item;
+  console.log(cate,item,stores[0]['city'],stores[0]['town']);
+gtag('event', 'item_select', {
+    'select_item': item,     // 第二個自訂參數
+    'select_city': stores[0]['city'],
+    'select_town': stores[0]['town'],
+    'page': '711',    // **新增的第三個自訂參數：標記網站來源**
+    'non_interaction': false
+});  
+  
   infoBox.style.display = '';
   resultTable.style.display = '';
 
