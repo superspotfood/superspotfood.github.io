@@ -167,8 +167,10 @@ const infoBox = document.getElementById('infoBox');
 const showCate = document.getElementById('showCate');
 const showItem = document.getElementById('showItem');
 
-let allZipData = [];
-let allData = [];
+let allZipData = [];    // zipcode.json
+let cityData = null;    // 讀取後的 {ccode}.json
+let allData = [];       // town 內所有店家資料（會依 town 選擇切換）
+let ccodeMap = {};      // city → ccode 快取
 let selectedCate = null, selectedScate = null, selectedName = null;
 
 function formatTimestamp(ts) {
@@ -187,10 +189,19 @@ function copyToClipboard(text, row) {
   });
 }
 
-// 載入 zipcode.json
+
+/* =====================
+   載入 zipcode.json
+   ===================== */
 async function loadZipData() {
   const res = await fetch('/711/zipcode.json');
   allZipData = await res.json();
+
+  // 建立 city → ccode 對照表
+  allZipData.forEach(z => {
+    ccodeMap[z.city] = z.ccode;
+  });
+
   const cities = [...new Set(allZipData.map(z => z.city))];
   cities.forEach(c => {
     const opt = document.createElement('option');
@@ -200,73 +211,98 @@ async function loadZipData() {
   });
 }
 
-citySelect.addEventListener('change', () => {
+/* =====================
+   選 City → 讀取 ccode.json
+   ===================== */
+citySelect.addEventListener('change', async () => {
   const city = citySelect.value;
+
   townSelect.innerHTML = '<option value="">-- 選擇區域 --</option>';
   townSelect.disabled = true;
+
   cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
   resultTable.style.display = 'none';
-  updateTimeDiv.style.display = 'none';
-  noDataMessage.style.display = 'none';
   infoBox.style.display = 'none';
+  noDataMessage.style.display = 'none';
+  updateTimeDiv.style.display = 'none';
+
   if (!city) return;
 
-  const towns = allZipData.filter(z => z.city === city);
-  towns.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t.town;
-    opt.textContent = t.town;
-    townSelect.appendChild(opt);
-  });
-  townSelect.disabled = false;
-});
-
-// town選擇後讀取對應區域檔案
-townSelect.addEventListener('change', async () => {
-  const city = citySelect.value;
-  const town = townSelect.value;
-  const zipInfo = allZipData.find(z => z.city === city && z.town === town);
-  cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
-  resultTable.style.display = 'none';
-  updateTimeDiv.style.display = 'none';
-  noDataMessage.style.display = 'none';
-  infoBox.style.display = 'none';
-  if (!zipInfo) return;
+  const ccode = ccodeMap[city];
+  if (!ccode) return;
 
   try {
-    const zipcode = zipInfo.zipcode;
-    const res = await fetch(`/711/data/${zipcode}.json`);
-    const json = await res.json();
+    const res = await fetch(`/711/data/${ccode}.json`);
+    cityData = await res.json();
 
-    allData = json.data || [];
-    updateTimeDiv.textContent = '資料更新時間(約每10分鐘更新一次)：' + formatTimestamp(json.updatetime);
+    updateTimeDiv.textContent =
+      '資料更新時間：' + formatTimestamp(cityData.updatetime);
     updateTimeDiv.style.display = 'block';
 
-    // 無資料情況處理
-    if (!allData || allData.length === 0 || allData.every(s => !s.data || s.data.length === 0)) {
-      noDataMessage.style.display = 'block';
-      return;
-    }
-
-    const cates = [...new Set(allData.flatMap(d => d.data.map(i => i.cate)).filter(Boolean))];
-    cateContainer.innerHTML = '<h4>選擇類別：</h4><div class="radio-group">' +
-      cates.map(c => `<div class="radio-btn" data-value="${c}">${c}</div>`).join('') + '</div>';
-
-    cateContainer.querySelectorAll('.radio-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        cateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        selectedCate = btn.dataset.value;
-        selectedScate = selectedName = null;
-        showScateOptions(selectedCate);
-      });
+    // 將 town[] 層級填入選單
+    cityData.town.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.town;
+      opt.textContent = t.town;
+      townSelect.appendChild(opt);
     });
-  } catch (err) {
-    console.error('讀取區域資料失敗：', err);
-    noDataMessage.textContent = '⚠️ 無法載入此區域資料';
+
+    townSelect.disabled = false;
+
+  } catch (e) {
+    console.error('讀取城市資料失敗：', e);
+    noDataMessage.textContent = '無法載入城市資料';
     noDataMessage.style.display = 'block';
   }
 });
+
+/* =====================
+   選 Town → 從 cityData 裡取該區 data[]
+   ===================== */
+townSelect.addEventListener('change', () => {
+  const town = townSelect.value;
+
+  cateContainer.innerHTML = scateContainer.innerHTML = nameContainer.innerHTML = '';
+  resultTable.style.display = 'none';
+  infoBox.style.display = 'none';
+  noDataMessage.style.display = 'none';
+
+  if (!town) return;
+
+  const townInfo = cityData.town.find(t => t.town === town);
+  if (!townInfo) return;
+
+  // 這就是該區域全部店舖資料
+  allData = townInfo.data || [];
+
+  if (allData.length === 0 || allData.every(s => !s.data || s.data.length === 0)) {
+    noDataMessage.style.display = 'block';
+    return;
+  }
+
+  /* ========== 建立類別選單 ========== */
+  const cates = [...new Set(allData
+    .flatMap(d => d.data.map(i => i.cate))
+    .filter(Boolean)
+  )];
+
+  cateContainer.innerHTML =
+    '<h4>選擇類別：</h4><div class="radio-group">' +
+    cates.map(c => `<div class="radio-btn" data-value="${c}">${c}</div>`).join('') +
+    '</div>';
+
+  cateContainer.querySelectorAll('.radio-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      cateContainer.querySelectorAll('.radio-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedCate = btn.dataset.value;
+      selectedScate = selectedName = null;
+      showScateOptions(selectedCate);
+    });
+  });
+});
+
+
 
 function showScateOptions(cate) {
   scateContainer.innerHTML = nameContainer.innerHTML = '';
